@@ -36,7 +36,7 @@ echo "15 seconds may not be enough for mysql to start - consider increasing if n
 sleep 15
 
 # Always stop container, but exit with 1 when tests are failing
-if npx jest --testPathIgnorePatterns="libsql/*"; then
+if npx jest tests; then
   docker stop mysql && docker stop postgres && docker stop libsql; 
 else
   docker stop mysql && docker stop postgres && docker stop libsql && exit 1
