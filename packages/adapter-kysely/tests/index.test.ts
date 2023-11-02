@@ -9,6 +9,7 @@ import {
   SqliteAdapter,
   SqliteDialect,
 } from "kysely"
+import { LibsqlDialect } from "@libsql/kysely-libsql"
 import { KyselyAdapter, KyselyAuth } from "../src"
 import { createPool } from "mysql2"
 import SqliteDatabase from "better-sqlite3"
@@ -39,6 +40,9 @@ const DIALECT_CONFIGS = {
   sqlite: {
     databasePath: ":memory:",
   },
+  libsql: {
+    url: "libsql://127.0.0.1:8080?tls=0",
+  },
 } as const
 
 async function dropDatabase(db: Kysely<Database>): Promise<void> {
@@ -53,28 +57,28 @@ async function dropDatabase(db: Kysely<Database>): Promise<void> {
 export function createTableWithId(
   schema: SchemaModule,
   dialect: BuiltInDialect,
-  tableName: string
+  tableName: string,
 ) {
   const builder = schema.createTable(tableName)
 
   if (dialect === "postgres") {
     return builder.addColumn("id", "uuid", (col) =>
-      col.primaryKey().defaultTo(sql`gen_random_uuid()`)
+      col.primaryKey().defaultTo(sql`gen_random_uuid()`),
     )
   } else if (dialect === "mysql") {
     return builder.addColumn("id", "varchar(36)", (col) =>
-      col.primaryKey().defaultTo(sql`(UUID())`)
+      col.primaryKey().defaultTo(sql`(UUID())`),
     )
   } else {
     return builder.addColumn("id", "integer", (col) =>
-      col.autoIncrement().primaryKey()
+      col.autoIncrement().primaryKey(),
     )
   }
 }
 
 async function createDatabase(
   db: Kysely<Database>,
-  dialect: BuiltInDialect
+  dialect: BuiltInDialect,
 ): Promise<void> {
   const defaultTimestamp = {
     postgres: sql`NOW()`,
@@ -94,14 +98,14 @@ async function createDatabase(
     .addColumn("name", textColumnType)
     .addColumn("email", textColumnType, (col) => col.unique().notNull())
     .addColumn("emailVerified", dateColumnType, (col) =>
-      col.defaultTo(defaultTimestamp)
+      col.defaultTo(defaultTimestamp),
     )
     .addColumn("image", textColumnType)
     .execute()
 
   let createAccountTable = createTableWithId(db.schema, dialect, "Account")
     .addColumn("userId", uuidColumnType, (col) =>
-      col.references("User.id").onDelete("cascade").notNull()
+      col.references("User.id").onDelete("cascade").notNull(),
     )
     .addColumn("type", textColumnType, (col) => col.notNull())
     .addColumn("provider", textColumnType, (col) => col.notNull())
@@ -119,13 +123,13 @@ async function createDatabase(
       ["userId"],
       "User",
       ["id"],
-      (cb) => cb.onDelete("cascade")
+      (cb) => cb.onDelete("cascade"),
     )
   await createAccountTable.execute()
 
   let createSessionTable = createTableWithId(db.schema, dialect, "Session")
     .addColumn("userId", uuidColumnType, (col) =>
-      col.references("User.id").onDelete("cascade").notNull()
+      col.references("User.id").onDelete("cascade").notNull(),
     )
     .addColumn("sessionToken", textColumnType, (col) => col.notNull().unique())
     .addColumn("expires", dateColumnType, (col) => col.notNull())
@@ -136,7 +140,7 @@ async function createDatabase(
       ["userId"],
       "User",
       ["id"],
-      (cb) => cb.onDelete("cascade")
+      (cb) => cb.onDelete("cascade"),
     )
   await createSessionTable.execute()
 
@@ -156,7 +160,7 @@ async function createDatabase(
 
 const runDialectBasicTests = (
   db: Kysely<Database>,
-  dialect: BuiltInDialect
+  dialect: BuiltInDialect,
 ) => {
   const datesStoredAsISOStrings =
     db.getExecutor().adapter instanceof SqliteAdapter
@@ -244,6 +248,15 @@ describe("Testing SqliteDialect", () => {
     dialect: new SqliteDialect({
       database: async () =>
         new SqliteDatabase(DIALECT_CONFIGS.sqlite.databasePath),
+    }),
+  })
+  runDialectBasicTests(db, "sqlite")
+})
+
+describe("Testing LibsqlDialect", () => {
+  const db = new KyselyAuth<Database>({
+    dialect: new LibsqlDialect({
+      url: DIALECT_CONFIGS.libsql.url,
     }),
   })
   runDialectBasicTests(db, "sqlite")
